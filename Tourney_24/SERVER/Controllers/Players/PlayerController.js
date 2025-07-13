@@ -17,14 +17,11 @@ import transporter from '../../Config/nodemailer.js';
 
 import Tournament from '../../Models/Organizer/Tournament.js';
 
+import Event from '../../Models/Organizer/Event.js';
 
-
-
-
-import TeamIndividual from '../../Models/Organizer/TeamIndividual.js';
-import TeamGroup from '../../Models/Organizer/TeamGroup.js';
+import Fixture from '../../Models/Fixture/FixtureModel.js';
+// Public: Get all organizations (for player)
 import Organizer from '../../Models/Organizer/OrganizerModel.js';
-import Events from '../../Models/Organizer/Event.js';
 
 
 const signUp = async (req,res)=>{
@@ -158,7 +155,7 @@ const getAllPublicTournaments = async (req, res) => {
   const getTournamentEvents = async (req, res) => {
     try {
       const { id } = req.params;
-      const events = await Events.find({ tournament: id });
+      const events = await Event.find({ tournament: id });
       console.log(events);
       return res.json({ success: true, message: events });
     } catch (error) {
@@ -364,225 +361,141 @@ const getTournamentById = async (req, res) => {
 
 
 
-
-
-
-
-const createIndividual = async(req,res)=>{
-    try{
-        const  playerId  = req.user;
-        // console.log(userId);
-        if(!playerId){
-            return res.json({success:false,message:`Player is Not Authorized`});
-        }
-       
-        const player = await PlayerModel.findById(playerId).select(['-password']);
-
-        if(!player){
-            return res.json({success:false,message:`Player Doesn't Exist `});
-        }
-
-        const { TournamentId, eventId } = req.params;
-
-        if(!TournamentId || !eventId){
-            return res.json({success:false,message:`Tournament and Event Id's are mandatory for Creating Players `});
-        }
-
-        const tournament = await Tournament.findById(TournamentId);
-        const event = await Events.findById(eventId);
-
-        if(!tournament || !event){
-            return res.json({success:false,message:`Tournament (Event) Not Found`});
-        }
-
-        const organizer = await Organizer.findById(tournament.organization);
-
-        // console.log(req.body);
-
-        const { name, email, mobile, academyName, feesPaid, ...customFields } = req.body;
-
-        if(!name || !email || !mobile || !academyName ){
-            return res.json({success:false,message:`All Fields are mandatory to Fill`});
-        }
-
-        const check = await PlayerModel.findOne({email});
-        if(!check){
-            return res.json({success:false,message:`${email} is Not Registered in Tourney24`});
-        }
-
-        const newIndividual = await TeamIndividual.create({
-            name,
-            email,
-            mobile,
-            academyName,
-            feesPaid,
-            tournamentId:TournamentId,
-            event:event.name,
-            eventId,
-            entry:online,
-            player:check._id,
-            dateAndTime: new Date().toISOString(),
-            customFields: Object.keys(customFields).length > 0 ? customFields : undefined
-        })
-
-        tournament.participantsIndividual.push(newIndividual._id);
-        await tournament.save();
-
-        organizer.participantsIndividual.push(newIndividual._id);
-        await organizer.save();
-
-        event.participantsIndividual.push(newIndividual._id);
-        await event.save();
-
-        return res.json({success:true,message:'Individual Team Registered SuccessFully'});
-
-    }catch(error){
-        console.log('Error in Creating Indiviudal group ',error);
-        return res.json({success:false,message:'Error in Creating Player (Individual)'});
+// Public: Get fixtures for an event (matches between teamA and teamB)
+const getEventFixtures = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Fetch the event to determine eventType
+    const event = await Event.findById(id);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
     }
-}
-
-
-
-const createGroupTeam = async(req,res)=>{
-    try{
-        const  playerId  = req.user;
-        // console.log(userId);
-        if(!playerId){
-            return res.json({success:false,message:`Player is Not Authorized`});
+    // Always use the raw ObjectId for teamA/teamB and check all three collections
+    // const Team = (await import('../../Models/Organizer/Teams.js')).default;
+    const TeamIndividual = (await import('../../Models/Organizer/TeamIndividual.js')).default;
+    const TeamGroup = (await import('../../Models/Organizer/TeamGroup.js')).default;
+ 
+    let rawFixtures = await Fixture.find({ event: id });
+    let fixtures = await Promise.all(rawFixtures.map(async (fixture) => {
+      let teamA = null, teamB = null;
+      if (fixture.teamA) {       
+        if (!teamA) {
+          let ti = await TeamIndividual.findById(fixture.teamA);
+          if (ti) teamA = { _id: ti._id, teamName: ti.name };
+          else {
+            let tg = await TeamGroup.findById(fixture.teamA);
+            if (tg) teamA = { _id: tg._id, teamName: tg.teamName };
+          }
         }
-       
-        const player = await PlayerModel.findById(playerId).select(['-password']);
-
-        if(!player){
-            return res.json({success:false,message:`Player Doesn't Exist `});
-        }
-
-        const { TournamentId, eventId } = req.params;
-
-        if(!TournamentId || !eventId){
-            return res.json({success:false,message:`Tournament and Event Id's are mandatory for Creating Players `});
-        }
-
-        const tournament = await Tournament.findById(TournamentId);
-        const event = await Events.findById(eventId);
-
-        if(!tournament || !event){
-            return res.json({success:false,message:`Tournament (Event) Not Found`});
-        }
-
-        // console.log(req.body);
-
-        const organizer = await Organizer.findById(tournament.organization);
-
+      } 
+      if (fixture.teamB) {
         
-        
-
-        const { teamName, members, } = req.body;
-        
-        if(!teamName || !members){
-            return res.json({success:false,message:`All Fields are mandatory`});
+        if (!teamB) {
+          let ti = await TeamIndividual.findById(fixture.teamB);
+          if (ti) teamB = { _id: ti._id, teamName: ti.name };
+          else {
+            let tg = await TeamGroup.findById(fixture.teamB);
+            if (tg) teamB = { _id: tg._id, teamName: tg.teamName };
+          }
         }
-        let FinalMembers = [];
-        // members.forEach(async (member)=>{
-        //     const { name, email, mobile, academyName, feesPaid } = member;
-        //     if(!name || !email || !mobile || !academyName){
-        //         return res.json({success:false,message:`All Fields are mandatory to Fill`});
-        //     }
-        //     const check = await PlayerModel.findOne({email});
-        //     if(!check){
-        //         return res.json({success:false,message:`${email} is Not Registered in Tourney24`});
-        //     }
-        //     const memberDetails = {
-        //         player:check._id,
-        //         name,
-        //         email,
-        //         mobile,
-        //         academyName,
-        //         feesPaid,
-        //     }
-        //     FinalMembers.push(memberDetails);
-        // })
+      }
+      return {
+        ...fixture.toObject(),
+        teamA,
+        teamB,
+      };
+    }));
+    return res.json({ success: true, fixtures });
+  } catch (error) {
+    console.error('Error fetching fixtures:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching fixtures' });
+  }
+};
 
+const getAllOrganizationsPublic = async (req, res) => {
+  try {
+    // Fetch all documents, only return organizationName
+    const organizations = await Organizer.find({ organizationName: { $ne: '' } })
+      .select('organizationName _id');
+    return res.json({ success: true, organizations });
+  } catch (error) {
+    console.error('Error fetching organizations:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching organizations' });
+  }
+};
 
-        for (const member of members) {
-            const { name, email, mobile, academyName, feesPaid } = member;
+const getTournamentsByOrganization = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tournaments = await Tournament.find({ organization: id });
+    return res.json({ success: true, tournaments });
+  } catch (error) {
+    console.error('Error fetching tournaments:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching tournaments' });
+  }
+};
 
-            if (!name || !email || !mobile || !academyName) {
-                return res.json({success:false,message:`All Fields are mandatory to Fill`});
-            }
-     
-            const check = await PlayerModel.findOne({email});
-            if (!check) {
-                return res.json({success:false,message:`${email} is Not Registered in Tourney24`});
-            }
+const updateFixtureScore = async (req, res) => {
+  try {
+    const { fixtureId } = req.params;
+    if (!fixtureId) {
+      return res.status(400).json({ success: false, message: 'Invalid fixture id' });
+    }
+    const allowed = ['status', 'scoreA', 'scoreB', 'winner', 'notes'];
+    const updateData = {};
+    allowed.forEach((f) => {
+      if (req.body[f] !== undefined) updateData[f] = req.body[f];
+    });
+    const updated = await Fixture.findByIdAndUpdate(fixtureId, updateData, { new: true });
+    if (!updated) return res.status(404).json({ success: false, message: 'Fixture not found' });
+    return res.json({ success: true, fixture: updated });
+  } catch (error) {
+    console.error('Error updating fixture:', error);
+    return res.status(500).json({ success: false, message: 'Error updating fixture' });
+  }
+};
 
-            FinalMembers.push({
-                player: check._id,
-                name,
-                email,
-                mobile,
-                academyName,
-                feesPaid,
-                customFields: member.customFields || {},
-            });
-        }
+// Search fixture by team names
+import TeamIndividual from '../../Models/Organizer/TeamIndividual.js';
+import TeamGroup from '../../Models/Organizer/TeamGroup.js';
 
+const searchFixtureByTeams = async (req, res) => {
+  try {
+    const { teamA, teamB } = req.query;
+    if (!teamA || !teamB) {
+      return res.status(400).json({ success: false, message: 'Both teamA and teamB are required' });
+    }
+    const allFixtures = await Fixture.find({});
+    for (const fix of allFixtures) {
+      // Resolve teamA name
+      let teamAObj = await TeamIndividual.findById(fix.teamA);
+      let teamAName = teamAObj ? teamAObj.name : null;
+      if (!teamAName) {
+        const groupA = await TeamGroup.findById(fix.teamA);
+        teamAName = groupA ? groupA.teamName : null;
+      }
+      // Resolve teamB name
+      let teamBObj = await TeamIndividual.findById(fix.teamB);
+      let teamBName = teamBObj ? teamBObj.name : null;
+      if (!teamBName) {
+        const groupB = await TeamGroup.findById(fix.teamB);
+        teamBName = groupB ? groupB.teamName : null;
+      }
+      // Compare both orders, case-insensitive
+      if (
+        (teamAName && teamBName &&
+          ((teamAName.toLowerCase() === teamA.toLowerCase() && teamBName.toLowerCase() === teamB.toLowerCase()) ||
+          (teamAName.toLowerCase() === teamB.toLowerCase() && teamBName.toLowerCase() === teamA.toLowerCase()))
+        )
+      ) {
+        return res.json({ success: true, fixture: fix, teamAName, teamBName });
+      }
+    }
+    return res.status(404).json({ success: false, message: 'No match found' });
+  } catch (error) {
+    console.error('Error searching fixture by teams:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
 
-        if (FinalMembers.length === 0) {
-            return res.json({ success: false, message: "No valid Registered players (In Tourney 24) found in the team" });
-        }
-
-
-
-
-        const newTeam = await TeamGroup.create({
-            teamName,
-            members:FinalMembers,
-            entry:'online',
-            event:event.name,
-            eventId,
-            tournamentId:TournamentId,
-            dateAndTime: new Date().toISOString(), 
-        })
-
-        tournament.participantsGroup.push(newTeam._id);
-        await tournament.save();
-
-        organizer.participantsGroup.push(newTeam._id);
-        await organizer.save();
-
-        event.participantsGroup.push(newTeam._id);
-        await event.save();
-
-
-        console.log("going Data");
-        return res.json({success:true,message:"New Team Created Successfully"});
-
-
-    }catch(error){
-        console.log('Error in Creating group Team ',error);
-        return res.json({success:false,message:'Error in Creating Players (Group)'});
-    }    
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export { signUp,verifyEmailWithOTP,login, checkPlayerAuthorization, getCurrentPlayer, logOut, getAllPublicTournaments, getTournamentEvents, getTournamentById, createIndividual, createGroupTeam };
+export { signUp,verifyEmailWithOTP,login, checkPlayerAuthorization, getCurrentPlayer, logOut, getAllPublicTournaments, getTournamentEvents, getTournamentById, getAllOrganizationsPublic, getTournamentsByOrganization, getEventFixtures, updateFixtureScore, searchFixtureByTeams };

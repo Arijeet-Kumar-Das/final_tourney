@@ -4,6 +4,8 @@ import {
   getFixtures,
   generateFixtures,
   updateFixture,
+  getStandings,
+  generateKnockoutFromStandings,
 } from "../../Controllers/Organizers/FixtureController.js";
 import { organizerAuthMidlleware } from "../../Middlewares/jwtAuth.js";
 
@@ -21,6 +23,16 @@ router.post(
   organizerAuthMidlleware,
   generateFixtures
 );
+
+// POST generate knockout stage after RR
+router.post(
+  "/:tournamentId/generate-knockout",
+  organizerAuthMidlleware,
+  generateKnockoutFromStandings
+);
+
+// GET standings (round-robin)
+router.get("/:tournamentId/standings", organizerAuthMidlleware, getStandings);
 
 // PUT update a particular fixture
 router.put("/fixture/:fixtureId", organizerAuthMidlleware, updateFixture);

@@ -1,8 +1,5 @@
-// Tournament Fixtures Page – Knock-out Bracket UI that integrates with backend fixtures API
-// This file is largely as provided by the user, with only minimal tweaks (backend URL helpers removed
-// because we now rely on lib/api.js), plus PropTypes cleanup.
-
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import RoundRobinFixtures from "./RoundRobinFixtures.jsx";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   fetchTeams,
@@ -17,14 +14,28 @@ const TournamentBracket = () => {
   // ---------------------------- STATE -----------------------------
   const [competitionType, setCompetitionType] = useState("individual");
   const [participants, setParticipants] = useState([]);
-  // Events list and selected event id
   const [events, setEvents] = useState([]);
+  const [currentEvent, setCurrentEvent] = useState(null);
   const [teams, setTeams] = useState([]);
   const [loadError, setLoadError] = useState(false);
   const [bracket, setBracket] = useState([]);
   const [fixtureMap, setFixtureMap] = useState({});
-  // Maps for quick id<->name lookup when persisting winners
-  // Map participant id -> display name depending on current view
+  const [winners, setWinners] = useState({});
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newPlayer1, setNewPlayer1] = useState("");
+  const [newPlayer2, setNewPlayer2] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [playerPairs, setPlayerPairs] = useState([]);
+
+  const { tournamentId, id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tid = tournamentId || id;
+  const eventId = searchParams.get("eventId");
+
+  // Simple 24-char hex check for Mongo ObjectId
+  const isValidObjectId = (val) => /^[a-f\d]{24}$/i.test(val);
+
+  // Maps for quick id<->name lookup
   const idNameMap = useMemo(() => {
     if (!participants.length) return {};
     return Object.fromEntries(
@@ -37,6 +48,7 @@ const TournamentBracket = () => {
       })
     );
   }, [participants, competitionType]);
+
   const nameIdMap = useMemo(
     () =>
       Object.fromEntries(
@@ -44,21 +56,6 @@ const TournamentBracket = () => {
       ),
     [participants]
   );
-  const [winners, setWinners] = useState({});
-  const [newTeamName, setNewTeamName] = useState("");
-  const [newPlayer1, setNewPlayer1] = useState("");
-  const [newPlayer2, setNewPlayer2] = useState("");
-  const [showAddForm, setShowAddForm] = useState(false);
-  // Player pairs for "players" view; populated after fetching participants for doubles/group events
-  const [playerPairs, setPlayerPairs] = useState([]);
-
-  const { tournamentId, id } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tid = tournamentId || id;
-  const eventId = searchParams.get("eventId");
-
-  // simple 24-char hex check for Mongo ObjectId
-  const isValidObjectId = (val) => /^[a-f\d]{24}$/i.test(val);
 
   // Fetch all events for dropdown
   useEffect(() => {
@@ -67,8 +64,9 @@ const TournamentBracket = () => {
       try {
         const evs = await fetchEvents(tid);
         setEvents(evs);
+        const found = evs.find((e) => e._id === (eventId || ""));
+        setCurrentEvent(found || null);
         if (!eventId && evs.length) {
-          // default to first event if none selected
           const firstId = evs[0]._id;
           setSearchParams(
             (prev) => {
@@ -83,6 +81,7 @@ const TournamentBracket = () => {
         console.error("Failed to load events", err);
       }
     })();
+    // eslint-disable-next-line
   }, [tid]);
 
   // Trigger backend bracket generation explicitly
@@ -90,9 +89,7 @@ const TournamentBracket = () => {
     if (!tid) return;
     try {
       await generateFixtures(tid, eventId);
-      // Reload fixtures after generation
-      const fxs = await fetchFixtures(tid, eventId);
-      // simple way: reload page state
+      await fetchFixtures(tid, eventId);
       window.location.reload();
     } catch (err) {
       console.error("Failed to generate fixtures", err);
@@ -108,20 +105,18 @@ const TournamentBracket = () => {
         setParticipants(t);
         setTeams(t.map((x) => x.teamName || x.name));
 
-        // Derive player pairs from participant display names (for doubles/group events)
+        // Derive player pairs from participant display names
         const derivedPairs = t.map((x) => {
           if (Array.isArray(x.members) && x.members.length) {
             const p1 = x.members[0]?.name || "";
             const p2 = x.members[1]?.name || null;
             return { player1: p1.trim(), player2: p2 ? p2.trim() : null };
           }
-          // fallback to display name parsing
           const display = x.name || x.teamName || "";
           if (display.includes(" & ")) {
             const [p1, p2] = display.split(" & ");
             return { player1: p1.trim(), player2: p2.trim() };
           }
-          // Handle solo or unmatched names
           const soloName = display.replace(" (Solo)", "").trim();
           return { player1: soloName, player2: null };
         });
@@ -133,12 +128,19 @@ const TournamentBracket = () => {
     })();
   }, [tid, eventId]);
 
-  // Fetch fixtures and build bracket structure (runs after participants are loaded)
+  // Fetch fixtures and build bracket structure
   useEffect(() => {
     if (!tid || !isValidObjectId(tid) || participants.length === 0) return;
     (async () => {
       try {
         let fixtures = await fetchFixtures(tid, eventId);
+        // If KO fixtures have been created, focus the bracket on them; otherwise keep the RR fixtures intact
+        if (currentEvent?.matchType?.includes("knockout")) {
+          const koOnly = fixtures.filter(
+            (fx) => fx.phase === "ko" || fx.phase === "knockout"
+          );
+          if (koOnly.length > 0) fixtures = koOnly; // switch view only when KO fixtures actually exist
+        }
         if (!Array.isArray(fixtures) || !fixtures.length) {
           fixtures = await generateFixtures(tid, eventId);
         }
@@ -163,7 +165,6 @@ const TournamentBracket = () => {
               if (teamField.$oid)
                 return idNameMap[teamField.$oid.toString()] || null;
             }
-            // Handle raw ObjectId or unmatched cases
             try {
               const strId = teamField.toString();
               if (idNameMap[strId]) return idNameMap[strId];
@@ -197,6 +198,31 @@ const TournamentBracket = () => {
             ),
           }));
 
+        // -------------------------------------------------------------
+        // Propagate winners that already exist in earlier rounds so
+        // that subsequent rounds (e.g. the Final) show correct
+        // participants right after the page loads (without the user
+        // needing to refresh or click anything).
+        // -------------------------------------------------------------
+        const propagateInitialWinners = (roundsArr, winnersObj) => {
+          roundsArr.forEach((rd) => {
+            rd.matches.forEach((m) => {
+              const win = winnersObj[m.id];
+              if (!win) return;
+              const nextRoundIdx = m.round + 1;
+              if (!roundsArr[nextRoundIdx]) return; // last round
+              const nextMatchIdx = Math.floor(m.matchIndex / 2);
+              const isFirst = m.matchIndex % 2 === 0;
+              const nextMatch =
+                roundsArr[nextRoundIdx].matches[nextMatchIdx];
+              if (!nextMatch) return;
+              if (isFirst) nextMatch.participant1 = win;
+              else nextMatch.participant2 = win;
+            });
+          });
+        };
+        propagateInitialWinners(arr, initialWinners);
+
         setBracket(arr);
         setFixtureMap(map);
         setWinners((prev) => ({ ...prev, ...initialWinners }));
@@ -216,7 +242,7 @@ const TournamentBracket = () => {
     return `Round ${roundNum + 1}`;
   };
 
-  // Generate bracket client-side (used when backend fixtures missing / local scenario)
+  // Generate bracket client-side if backend fixtures missing
   const generateBracket = useCallback((participants) => {
     if (participants.length < 2) return [];
     const nextPower = Math.pow(2, Math.ceil(Math.log2(participants.length)));
@@ -246,6 +272,11 @@ const TournamentBracket = () => {
     }
     return rounds;
   }, []);
+
+  // Detect if knockout fixtures already generated (for hybrid events)
+  const hasKnockout = useMemo(() => {
+    return Object.values(fixtureMap).some((fx) => fx?.phase === "ko");
+  }, [fixtureMap]);
 
   // current participants: memoized
   const currentParticipants = useMemo(() => {
@@ -281,7 +312,7 @@ const TournamentBracket = () => {
       try {
         const fx = fixtureMap[matchId];
         if (fx) {
-          const winnerId = nameIdMap[winnerName]; // already string
+          const winnerId = nameIdMap[winnerName];
           if (winnerId) {
             await updateFixture(fx._id, {
               winner: winnerId,
@@ -309,6 +340,35 @@ const TournamentBracket = () => {
       }
     }
   };
+
+  // ------------------- winner propagation helpers ------------------
+  const applyWinnersToBracket = useCallback(
+    (brk, winObj) => {
+      const next = brk.map((r) => ({ ...r, matches: r.matches.map((m) => ({ ...m })) }));
+      next.forEach((round) => {
+        round.matches.forEach((m) => {
+          const win = winObj[m.id];
+          if (!win) return;
+          const nextRoundIdx = m.round + 1;
+          if (!next[nextRoundIdx]) return;
+          const nextMatchIdx = Math.floor(m.matchIndex / 2);
+          const isFirst = m.matchIndex % 2 === 0;
+          const nextMatch = next[nextRoundIdx].matches[nextMatchIdx];
+          if (!nextMatch) return;
+          if (isFirst) nextMatch.participant1 = win;
+          else nextMatch.participant2 = win;
+        });
+      });
+      return next;
+    },
+    []
+  );
+
+  // When winners change (e.g., scores edited elsewhere and fetched on reload)
+  useEffect(() => {
+    if (!bracket.length) return;
+    setBracket((prev) => applyWinnersToBracket(prev, winners));
+  }, [winners, applyWinnersToBracket]);
 
   const updateNextRound = (match, winner) => {
     if (match.round >= bracket.length - 1) return;
@@ -476,6 +536,11 @@ const TournamentBracket = () => {
   const finalWinner = bracket.length
     ? winners[`round${bracket.length - 1}_match0`]
     : null;
+
+  // Filter out round-robin rounds when the event is hybrid
+  const displayedBracket = currentEvent?.matchType?.includes("round-robin")
+    ? bracket.filter((rnd) => rnd.matches.some((m) => m.phase !== "rr"))
+    : bracket;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -650,52 +715,51 @@ const TournamentBracket = () => {
         </div>
 
         {/* Bracket */}
-        {/* Event selector */}
-        <div className="mb-6 flex items-center gap-3">
-          <label className="font-semibold text-gray-700">Event:</label>
-          <select
-            value={eventId || ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              setSearchParams((prev) => {
-                const np = new URLSearchParams(prev);
-                if (val) np.set("eventId", val);
-                else np.delete("eventId");
-                return np;
-              });
-            }}
-            className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
-          >
-            {events.map((ev) => (
-              <option key={ev._id} value={ev._id}>
-                {ev.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {bracket.length ? (
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="overflow-x-auto">
-              <div className="flex gap-12 min-w-max py-4">
-                {bracket.map((round) => (
-                  <div key={round.roundNumber} className="min-w-[300px]">
-                    <div className="text-center mb-6">
-                      <h3 className="text-xl font-bold text-blue-600 mb-2">
-                        {round.roundName}
-                      </h3>
-                      <div className="w-full h-1 bg-gradient-to-r from-blue-500 to-blue-400 rounded-full"></div>
-                    </div>
-                    <div className="space-y-4">
-                      {round.matches.map((m) => (
-                        <MatchComponent key={m.id} match={m} />
-                      ))}
-                    </div>
-                  </div>
+        {currentEvent?.matchType?.includes("round-robin") && !hasKnockout ? (
+          <RoundRobinFixtures />
+        ) : currentParticipants.length >= 2 ? (
+          <>
+            {/* Event selector */}
+            <div className="mb-6 flex items-center gap-3">
+              <label className="font-semibold text-gray-700">Event:</label>
+              <select
+                value={eventId || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchParams((prev) => {
+                    const np = new URLSearchParams(prev);
+                    if (val) np.set("eventId", val);
+                    else np.delete("eventId");
+                    return np;
+                  });
+                }}
+                className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+              >
+                {events.map((ev) => (
+                  <option key={ev._id} value={ev._id}>
+                    {ev.name}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
-          </div>
+            <div className="flex gap-12 min-w-max py-4">
+              {displayedBracket.map((round) => (
+                <div key={round.roundNumber} className="min-w-[300px]">
+                  <div className="text-center mb-6">
+                    <h3 className="text-xl font-bold text-blue-600 mb-2">
+                      {round.roundName}
+                    </h3>
+                    <div className="w-full h-1 bg-gradient-to-r from-blue-500 to-blue-400 rounded-full"></div>
+                  </div>
+                  <div className="space-y-4">
+                    {round.matches.map((m) => (
+                      <MatchComponent key={m.id} match={m} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="text-center py-16 bg-white rounded-xl shadow-lg">
             <div className="text-6xl mb-4">🏆</div>

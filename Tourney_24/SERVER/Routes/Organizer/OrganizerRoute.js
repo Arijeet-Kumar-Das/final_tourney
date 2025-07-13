@@ -33,6 +33,7 @@ import {
   getCurrentOrganization,
 } from "../../Controllers/Organizers/OrganizerController.js";
 import fixturesRoutes from "./fixturesRoutes.js";
+import { deleteTeam } from "../../Controllers/Organizers/TeamsController.js";
 
 import { organizerAuthMidlleware } from "../../Middlewares/jwtAuth.js";
 
@@ -93,6 +94,9 @@ router.post(
 
 router.get("/updateTournamentStatus", updateTournamentStatus);
 router.get("/dashboard", organizerAuthMidlleware, getDashBoardData);
+
+// delete team
+router.delete("/teams/:teamId", organizerAuthMidlleware, deleteTeam);
 
 // Organization management routes
 router.get("/profile", organizerAuthMidlleware, getProfile);

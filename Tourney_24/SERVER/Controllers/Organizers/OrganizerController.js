@@ -317,6 +317,12 @@ const logOut = async (req, res) => {
 const createTournament = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -440,6 +446,12 @@ const createTournament = async (req, res) => {
 const getAllTournaments = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -468,6 +480,12 @@ const getAllTournaments = async (req, res) => {
 const getParticularTournament = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -505,6 +523,12 @@ const getParticularTournament = async (req, res) => {
 const getDashBoardData = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -567,6 +591,12 @@ const getDashBoardData = async (req, res) => {
 const createNewEvent = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -645,6 +675,12 @@ const createNewEvent = async (req, res) => {
 const getAllEvents = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -682,6 +718,12 @@ const getAllEvents = async (req, res) => {
 const createIndividual = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -775,6 +817,12 @@ const createIndividual = async (req, res) => {
 const createGroupTeam = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -908,6 +956,12 @@ const createGroupTeam = async (req, res) => {
 const getIndividualTeam = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -959,6 +1013,12 @@ const getIndividualTeam = async (req, res) => {
 const getGroupTeam = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -1010,6 +1070,12 @@ const getGroupTeam = async (req, res) => {
 const getPaymentDetails = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -1060,6 +1126,12 @@ const getPaymentDetails = async (req, res) => {
 const addSettings = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -1119,6 +1191,12 @@ const addSettings = async (req, res) => {
 const sendMassMail = async (req, res) => {
   try {
     const organization = req.organizer;
+    console.log(
+      "[DEBUG] Active organization in context:",
+      organization,
+      "| Logged-in user:",
+      req.organizerUser
+    );
 
     if (!organization) {
       return res.json({
@@ -1519,7 +1597,7 @@ const getOrganizationMembers = async (req, res) => {
 // Get organizations in the same cluster
 const getAccessibleOrganizations = async (req, res) => {
   try {
-    const userId = req.organizer;
+    const userId = req.organizerUser; // use base account id
 
     if (!userId) {
       return res.json({
@@ -1574,7 +1652,7 @@ const getAccessibleOrganizations = async (req, res) => {
 // Switch organization context within cluster
 const switchOrganization = async (req, res) => {
   try {
-    const userId = req.organizer;
+    const userId = req.organizerUser; // use base account id
     const { organizationId } = req.body;
 
     if (!userId || !organizationId) {
@@ -1629,7 +1707,7 @@ const switchOrganization = async (req, res) => {
 // Create/Update current user's organization details within cluster
 const createOrganization = async (req, res) => {
   try {
-    const userId = req.organizer;
+    const userId = req.organizerUser; // use base account id
     const { organizationName, organizationPhone } = req.body;
 
     console.log("createOrganization called by userId:", userId);
@@ -1661,9 +1739,15 @@ const createOrganization = async (req, res) => {
       role: user.role,
     });
 
-    // Update ONLY the current user's organization details
+    // Promote member to owner (if not already) and update org details
     user.organizationName = organizationName.trim();
     user.phone = organizationPhone ? organizationPhone.trim() : "";
+    // Promote to owner if previously member
+    if (user.role !== "owner") {
+      user.role = "owner";
+    }
+    // Make this new organization the active context immediately
+    user.currentOrganizationContext = user._id;
     await user.save();
 
     console.log(

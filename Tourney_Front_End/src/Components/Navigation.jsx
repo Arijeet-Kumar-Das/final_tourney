@@ -104,6 +104,10 @@ const Navigation = () => {
           <div className="hidden md:flex items-center flex-1 max-w-md mx-8 justify-center">
           </div>
 
+          <Link to="/player/score" className={`hover:text-primary transition-colors ${isHomePage ? "text-white" : "text-gray-700"}`}>
+              Score
+            </Link> 
+
           {/* Location and Auth */}
           <div className="flex items-center space-x-4">
             <select 
@@ -134,6 +138,9 @@ const Navigation = () => {
               </div>
             ) : ( */}
 
+            
+
+            
 
             {
               isPlayerLoggedIn?

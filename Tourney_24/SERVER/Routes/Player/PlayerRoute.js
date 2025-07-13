@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 
 
-import { signUp,verifyEmailWithOTP,login, checkPlayerAuthorization, getCurrentPlayer, logOut, getAllPublicTournaments, getTournamentEvents, getTournamentById, createGroupTeam, createIndividual } from '../../Controllers/Players/PlayerController.js';
+import { signUp,verifyEmailWithOTP,login, checkPlayerAuthorization, getCurrentPlayer, logOut, getAllPublicTournaments, getTournamentEvents, getTournamentById, getAllOrganizationsPublic, getTournamentsByOrganization, getEventFixtures, updateFixtureScore, searchFixtureByTeams } from '../../Controllers/Players/PlayerController.js';
 
 import { userAuthMiddleware } from '../../Middlewares/jwtAuth.js';
 
@@ -20,10 +20,23 @@ router.get('/tournaments/:id', getTournamentById);
 router.get('/tournaments/:id/events', getTournamentEvents);
 
 
-router.post('/createIndividualTeam/:TournamentId/:eventId',userAuthMiddleware, createIndividual);
-router.post('/createGroupTeam/:TournamentId/:eventId',userAuthMiddleware, createGroupTeam);
 
 
 
+
+// Public: Get all organizations (for player)
+router.get('/organizations/public', getAllOrganizationsPublic);
+
+// Public: Get tournaments by organization
+router.get('/organizations/:id/tournaments', getTournamentsByOrganization);
+
+// Public: Get fixtures for an event
+router.get('/events/:id/fixtures', getEventFixtures);
+
+// GET search fixture by team names
+router.get('/fixtures/search', searchFixtureByTeams);
+
+// PATCH: Update fixture score
+router.patch('/fixtures/:fixtureId', updateFixtureScore);
 
 export default router;

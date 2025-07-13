@@ -54,6 +54,31 @@ export const generateFixtures = async (tournamentId, eventId) => {
   return fixtures;
 };
 
+export const fetchStandings = async (tournamentId, eventId) => {
+  const url = new URL(`${BASE_URL}/api/organizer/fixtures/${tournamentId}/standings`);
+  if (eventId) url.searchParams.append("eventId", eventId);
+  const { standings } = await defaultFetch(url.toString());
+  return standings;
+};
+
+export const generateKnockout = async (tournamentId, eventId, qualifiers = 4) => {
+  const body = { eventId, qualifiers };
+  const { fixtures } = await defaultFetch(
+    `${BASE_URL}/api/organizer/fixtures/${tournamentId}/generate-knockout`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
+  return fixtures;
+};
+
+export const deleteTeam = async (teamId) => {
+  await defaultFetch(`${BASE_URL}/api/organizer/teams/${teamId}`, {
+    method: "DELETE",
+  });
+};
+
 export const updateFixture = async (fixtureId, payload) => {
   const { fixture } = await defaultFetch(
     `${BASE_URL}/api/organizer/fixtures/fixture/${fixtureId}`,
