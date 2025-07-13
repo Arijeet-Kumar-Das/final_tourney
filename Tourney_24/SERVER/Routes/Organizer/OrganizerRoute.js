@@ -31,6 +31,9 @@ import {
   switchOrganization,
   createOrganization,
   getCurrentOrganization,
+  getEventFixtures,
+  updateFixtureScores,
+  resetFixtureScores,
 } from "../../Controllers/Organizers/OrganizerController.js";
 import fixturesRoutes from "./fixturesRoutes.js";
 import { deleteTeam } from "../../Controllers/Organizers/TeamsController.js";
@@ -125,5 +128,11 @@ router.post(
 );
 
 router.use("/fixtures", fixturesRoutes);
+
+router.get('/allMatches/:TournamentId/:eventId',organizerAuthMidlleware, getEventFixtures);
+
+
+router.patch('/update-scores/:fixtureId', organizerAuthMidlleware, updateFixtureScores);
+router.patch('/reset-scores/:fixtureId', organizerAuthMidlleware, resetFixtureScores);
 
 export default router;

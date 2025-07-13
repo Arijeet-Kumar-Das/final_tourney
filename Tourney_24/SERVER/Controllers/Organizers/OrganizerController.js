@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import cloudinary from "../../Config/cloudinary.js";
 import validator from "validator";
-
+import Fixture from "../../Models/Fixture/FixtureModel.js";
 import Organizer from "../../Models/Organizer/OrganizerModel.js";
 import Tournament from "../../Models/Organizer/Tournament.js";
 import Events from "../../Models/Organizer/Event.js";
@@ -1287,18 +1287,25 @@ const updateTournamentStatus = async (req, res) => {
   try {
     const tournaments = await Tournament.find();
     const now = new Date();
+
+    // Helper to get date part only (year, month, day)
+    const getDateOnly = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
     let updated = [];
 
     for (const tournament of tournaments) {
-      // Don't update if cancelled
       if (tournament.status === "cancelled") continue;
 
       let newStatus = tournament.status;
-      if (now < tournament.startDate) {
+      const nowDate = getDateOnly(now);
+      const startDate = getDateOnly(tournament.startDate);
+      const endDate = getDateOnly(tournament.endDate);
+
+      if (nowDate < startDate) {
         newStatus = "Upcoming";
-      } else if (now >= tournament.startDate && now <= tournament.endDate) {
+      } else if (nowDate >= startDate && nowDate <= endDate) {
         newStatus = "Active";
-      } else if (now > tournament.endDate) {
+      } else if (nowDate > endDate) {
         newStatus = "Completed";
       }
 
@@ -1319,10 +1326,9 @@ const updateTournamentStatus = async (req, res) => {
     return res.json({
       success: false,
       message: `Error In Updating Tournament Status ${error}`,
-    });
-  }
+    });
+  }
 };
-
 // Get organizer profile
 const getProfile = async (req, res) => {
   try {
@@ -1796,6 +1802,126 @@ const getCurrentOrganization = async (req, res) => {
   }
 };
 
+const getEventFixtures = async (req, res) => {
+  try {
+
+    const organization = req.organizer;
+
+    if (!organization) {
+      return res.json({
+        success: false,
+        message: "Session Ended Sign In Again Please",
+      });
+    }
+
+    const organizer = await Organizer.findById(organization);
+
+    if (!organizer) {
+      return res.json({ success: false, message: "Organizer Not Found" });
+    }
+
+
+    const { eventId } = req.params;
+    // Fetch the event to determine eventType
+    const event = await Events.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+    // Always use the raw ObjectId for teamA/teamB and check all three collections
+    // const Team = (await import('../../Models/Organizer/Teams.js')).default;
+    const TeamIndividual = (await import('../../Models/Organizer/TeamIndividual.js')).default;
+    const TeamGroup = (await import('../../Models/Organizer/TeamGroup.js')).default;
+ 
+    let rawFixtures = await Fixture.find({ event: eventId });
+    let fixtures = await Promise.all(rawFixtures.map(async (fixture) => {
+      let teamA = null, teamB = null;
+      if (fixture.teamA) {       
+        if (!teamA) {
+          let ti = await TeamIndividual.findById(fixture.teamA);
+          if (ti) teamA = { _id: ti._id, teamName: ti.name };
+          else {
+            let tg = await TeamGroup.findById(fixture.teamA);
+            if (tg) teamA = { _id: tg._id, teamName: tg.teamName };
+          }
+        }
+      } 
+      if (fixture.teamB) {
+        
+        if (!teamB) {
+          let ti = await TeamIndividual.findById(fixture.teamB);
+          if (ti) teamB = { _id: ti._id, teamName: ti.name };
+          else {
+            let tg = await TeamGroup.findById(fixture.teamB);
+            if (tg) teamB = { _id: tg._id, teamName: tg.teamName };
+          }
+        }
+      }
+      return {
+        ...fixture.toObject(),
+        teamA,
+        teamB,
+      };
+    }));
+    return res.json({ success: true, fixtures });
+  } catch (error) {
+    console.error('Error fetching fixtures:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching fixtures' });
+  }
+};
+
+
+
+
+
+
+// Update fixture scores (PATCH)
+const updateFixtureScores = async (req, res) => {
+  try {
+    const { fixtureId } = req.params;
+    const { scoreA, scoreB } = req.body;
+
+    // Validate input
+    if (typeof scoreA !== 'number' || typeof scoreB !== 'number') {
+      return res.status(400).json({ success: false, message: "Scores must be numbers." });
+    }
+
+    const fixture = await Fixture.findById(fixtureId);
+    if (!fixture) {
+      return res.status(404).json({ success: false, message: "Fixture not found." });
+    }
+
+    fixture.scoreA = scoreA;
+    fixture.scoreB = scoreB;
+    await fixture.save();
+
+    return res.json({ success: true, message: "Scores updated successfully.", fixture });
+  } catch (error) {
+    console.error("Error updating fixture scores:", error);
+    return res.status(500).json({ success: false, message: "Server error updating scores." });
+  }
+};
+
+// Reset fixture scores (PATCH)
+const resetFixtureScores = async (req, res) => {
+  try {
+    const { fixtureId } = req.params;
+
+    const fixture = await Fixture.findById(fixtureId);
+    if (!fixture) {
+      return res.status(404).json({ success: false, message: "Fixture not found." });
+    }
+
+    fixture.scoreA = 0;
+    fixture.scoreB = 0;
+    await fixture.save();
+
+    return res.json({ success: true, message: "Scores reset successfully.", fixture });
+  } catch (error) {
+    console.error("Error resetting fixture scores:", error);
+    return res.status(500).json({ success: false, message: "Server error resetting scores." });
+  }
+};
+
 export {
   signUp,
   verifyEmailWithOTP,
@@ -1825,4 +1951,7 @@ export {
   switchOrganization,
   createOrganization,
   getCurrentOrganization,
+  getEventFixtures,
+  updateFixtureScores,
+  resetFixtureScores,
 };

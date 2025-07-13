@@ -371,8 +371,8 @@ const Teams = () => {
             }}
             className="teams-event-select"
           >
-            {allEvents.map((event) => (
-              <option key={event.name} value={event.name}>
+            {allEvents.map((event, index) => (
+              <option key={index} value={event.name}>
                 {event.name}
               </option>
             ))}
